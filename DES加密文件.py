@@ -1,29 +1,33 @@
 # -*- coding: utf-8 -*-
-# Author:0verWatch
+# Author:ysy
+# open source under mozallie protocol
 
 from DES_destruct import *
 import re
 import base64
 
+encryptMode = 1
 
-def write_in_file(str_mess):
+def write_in_file(str_mess,path):
     try:
-        f = open('DES.txt','w',encoding='utf-8')
+        f = open(path,'wb')
         f.write(str_mess)
+
         f.close()
         print("文件输出成功！")
     except IOError:
         print('文件加解密出错！！！')
 
-def read_out_file():
+def read_out_file(path):
     try:
-        f = open('DES.txt','r',encoding = 'utf-8')
+        f = open(path,'rb')
         mess = f.read()
         f.close()
         print("文件读取成功！")
         return mess
     except IOError:
         print('文件加解密出错！！！')
+
 
 
 #字符串转化为二进制
@@ -37,6 +41,7 @@ def str2bin(message):
     return res
 
 
+
 #二进制转化为字符串
 def bin2str(bin_str):
     res = ""
@@ -46,6 +51,24 @@ def bin2str(bin_str):
     return res
     # print("未经过编码的加密结果:"+res)
     # print("经过base64编码:"+str(base64.b64encode(res.encode('utf-8')),'utf-8'))
+
+def byte2bin(message):
+    res = ""
+    for i in message:
+        tmp = bin(i)[2:]
+        for j in range(0,8-len(tmp)):
+            tmp = '0'+ tmp   #把输出的b给去掉
+        res += tmp
+    return res
+
+def bin2byte(bin_str):
+    res = bytearray()
+    tmp = re.findall(r'.{8}',bin_str)
+    for i in tmp:
+        res.append(int(i,2))
+
+    return res
+
 
 
 #IP盒处理
@@ -156,9 +179,9 @@ def gen_key(key):
 
 
 def des_encrypt_one(bin_message,bin_key): #64位二进制加密的测试
-    #bin_message = deal_mess(str2bin(message))
+    #bin_message = deal_mess(byte2bin(message))
     mes_ip_bin = ip_change(bin_message)
-    #bin_key = input_key_judge(str2bin(key))
+    #bin_key = input_key_judge(byte2bin(key))
     key_lst = gen_key(bin_key)
     mes_left = mes_ip_bin[0:32]
     mes_right = mes_ip_bin[32:]
@@ -176,7 +199,7 @@ def des_encrypt_one(bin_message,bin_key): #64位二进制加密的测试
 ##64位二进制解密的测试,注意秘钥反过来了，不要写错了
 def des_decrypt_one(bin_mess,bin_key):
     mes_ip_bin = ip_change(bin_mess)
-    #bin_key = input_key_judge(str2bin(key))
+    #bin_key = input_key_judge(byte2bin(key))
     key_lst = gen_key(bin_key)
     lst = range(1,16)
     cipher_left = mes_ip_bin[0:32]
@@ -189,8 +212,7 @@ def des_decrypt_one(bin_mess,bin_key):
     fin_right = cipher_right
     fin_output  = fin_left + fin_right
     bin_plain = ip_re_change(fin_output)
-    res = bin2str(bin_plain)
-    return res
+    return bin_plain
 
 
 #简单判断以及处理信息分组
@@ -221,53 +243,87 @@ def input_key_judge(bin_key):
     #     bin_key = bin_key[0:64]    #秘钥超过64位的情况默认就是应该跟密文一样长 直接将密钥变为跟明文一样的长度，虽然安全性会有所下降
     return bin_key
 
+def strXor(preStr,curStr):
+    res = ""
+    for i in range(0,len(preStr)):
+        if preStr[i]==curStr[i]:
+            res = res+'0'
+        else:
+            res = res + '1'
+    return res
 
 def all_message_encrypt(message,key):
-        bin_mess = deal_mess(str2bin(message))
+        bin_mess = deal_mess(byte2bin(message))
         res = ""
         bin_key = input_key_judge(str2bin(key))
         tmp = re.findall(r'.{64}',bin_mess)
+        notFirstSegment = False
+        preSegment = ""
+        
         for i in tmp:
-            res += des_encrypt_one(i,bin_key)
+            if (notFirstSegment and encryptMode==2):
+                i = strXor(preSegment,i)
+            tmpRes = des_encrypt_one(i,bin_key)
+            res += tmpRes
+            preSegment = tmpRes
+            notFirstSegment = True
+
         return res
 
 
 
 def all_message_decrypt(message,key):
-    bin_mess = deal_mess(str2bin(message))
+    bin_mess = deal_mess(byte2bin(message))
     res = ""
     bin_key = input_key_judge(str2bin(key))
     tmp = re.findall(r'.{64}',bin_mess)
+    notFirstSegment = False
+    preSegment = ""
     for i in tmp:
-        res += des_decrypt_one(i,bin_key)
+        tmpRes = des_decrypt_one(i,bin_key)
+        if (notFirstSegment and encryptMode==2):
+            tmpRes = strXor(preSegment,tmpRes)
+        res += tmpRes
+        preSegment = i
+        notFirstSegment = True
     return res
 
 
 def get_mode():
-    print("1.加密")
-    print("2.解密")
+
+    global encryptMode
+    print("1.加密  2.解密")
     mode = input()
+    print("现在请选择加（解）密模式，1.密码本模式ECB，2.密码分组链接模式CBC")
+    encryptMode = input()
     if mode == '1':
-        print("请输入信息输入字符串不能为空：")
-        message = input().replace(' ','')
+        print("请输入文件路径")
+        filePath = input().replace(' ','')
+        #filePath = "C:\\Users\\yan56\\Pictures\\2.png"
+        message = read_out_file(filePath)
         print("请输入你的秘钥：")
         key = input().replace(' ','')
         s = all_message_encrypt(message,key)
-        out_mess = bin2str(s)
-        print("加密过后的内容:"+ out_mess)
-        write_in_file(out_mess)
+        out_mess = bin2byte(s)
+        write_in_file(out_mess,filePath+".enc")
+        print("加密后的文件储存为原路径下同名的后缀增加.enc的文件")
         #print(type(out_mess))
         # base_out_mess = base64.b64encode(out_mess.encode('utf-8'))
         # print("Base64编码过后:"+ base_out_mess.decode())
     elif mode == '2':
         # print("请输入信息输入字符串不能为空：")
         # message = input().replace(' ', '')
+        print("请输入需解密的文件路径")
+        #filePath = "C:\\Users\\yan56\\Pictures\\2.png.enc"
+        filePath = input().replace(' ', '')
         print("请输入你的秘钥：")
         key = input().replace(' ', '')
-        message = read_out_file()
+        message = read_out_file(filePath)
         s = all_message_decrypt(message, key)
-        #out_mess = bin2str(s)
-        print("解密后的信息："+ s)
+
+        out_mess = bin2byte(s)
+        write_in_file(out_mess,filePath+".dec")
+        print("加密后的文件储存为原路径下同名的后缀增加.dec的文件，这是为了避免覆盖源文件，请手动更改后缀名")
     else:
         print("请重新输入！")
 
